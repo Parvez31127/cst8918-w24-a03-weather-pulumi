@@ -4,6 +4,37 @@ import * as resources from '@pulumi/azure-native/resources'
 import * as containerinstance from '@pulumi/azure-native/containerinstance'
 import * as containerregistry from '@pulumi/azure-native/containerregistry'
 // Import the configuration settings for the current stack.
+import * as cache from '@pulumi/azure-native/cache'
+// ... configs and resource group
+
+// Create a managed Redis service
+const redis = new cache.Redis(`${prefixName}-redis`, {
+  name: `${prefixName}-weather-cache`,
+  location: 'westus3',
+  resourceGroupName: resourceGroup.name,
+  enableNonSslPort: true,
+  redisVersion: 'Latest',
+  minimumTlsVersion: '1.2',
+  redisConfiguration: {
+    maxmemoryPolicy: 'allkeys-lru'
+  },
+  sku: {
+    name: 'Basic',
+    family: 'C',
+    capacity: 0
+  }
+})
+// Extract the auth creds from the deployed Redis service
+const redisAccessKey = cache
+  .listRedisKeysOutput({ name: redis.name, resourceGroupName: resourceGroup.name })
+  .apply(keys => keys.primaryKey)
+  environmentVariables: [
+    // existing vars ...
+    {
+      name: 'REDIS_URL',
+      value: redisConnectionString
+    }
+  ]
 const config = new pulumi.Config()
 const appPath = config.get('appPath') || '../'
 const prefixName = config.get('prefixName') || 'cst8918a03male0120'
@@ -92,7 +123,7 @@ const containerGroup = new containerinstance.ContainerGroup(
           },
           {
             name: 'WEATHER_API_KEY',
-            value: '6bd0e95236f9051346690f791b1b112e'
+            value: config.requireSecret('weatherApiKey')
           }
         ],
         resources: {
